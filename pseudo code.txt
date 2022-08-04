@@ -1,0 +1,529 @@
+IMPORT cv2
+IMPORT numpy as np
+IMPORT matplotlib.pyplot as plt
+from skimage.filters IMPORT threshold_multiotsu
+from PIL IMPORT Image
+SET np.set_OUTPUToptions(threshold TO np.inf)
+from skimage.measure IMPORT label
+IMPORT math as mt
+IMPORT pandas as pd
+IMPORT time
+
+SET start TO time.process_time()
+
+
+DEFINE FUNCTION mostFrequent(arr, n):
+
+    SET Hash TO dict()
+
+    FOR i IN range(n):
+
+        IF arr[i] IN Hash.keys():
+
+            Hash[arr[i]] += 1
+
+        ELSE:
+
+            SET Hash[arr[i]] TO 1
+
+    # find the max frequency
+
+    SET max_count TO 0
+
+    SET res TO -1
+
+    FOR i IN Hash:
+
+        IF (max_count < Hash[i]):
+
+            SET res TO i
+
+            SET max_count TO Hash[i]
+
+    RETURN res
+
+SET img_cp TO cv2.imread('C:/Users/nianc/Desktop/Cell Segmentation Papers/Our result Activated/test8.tif', -1)
+SET img_gt TO cv2.imread('C:/Users/nianc/Desktop/Cell Segmentation Papers/Our result Activated/test7.tif', -1)
+
+## conventional mask part
+SET img_gt TO img_gt.astype(int)
+SET img_gtt TO img_gt.flatten()
+
+SET img_gtt TO [x FOR x IN img_gtt IF x != 0]
+
+SET n TO len(img_gtt)
+CALL SET level1 TO mostFrequent(img_gtt, n) 
+SET img_gtt TO [x FOR x IN img_gtt IF x != level1]
+
+SET n TO len(img_gtt)
+CALL SET level2 TO mostFrequent(img_gtt, n) 
+SET img_gtt TO [x FOR x IN img_gtt IF x != level2]
+
+SET n TO len(img_gtt)
+CALL SET level3 TO mostFrequent(img_gtt, n) 
+SET img_gtt TO [x FOR x IN img_gtt IF x != level3]
+
+SET n TO len(img_gtt)
+CALL SET level4 TO mostFrequent(img_gtt, n) 
+
+OUTPUT(level1, level2, level3, level4)
+
+
+SET img_gt1 TO np.zeros((img_gt.shape[0], img_gt.shape[1]))
+
+SET img_gt1[img_gt EQUALS level1] TO 1
+
+SET img_gt2 TO np.zeros((img_gt.shape[0], img_gt.shape[1]))
+
+SET img_gt2[img_gt EQUALS level2] TO 1
+
+SET img_gt3 TO np.zeros((img_gt.shape[0], img_gt.shape[1]))
+
+SET img_gt3[img_gt EQUALS level3] TO 1
+
+SET img_gt4 TO np.zeros((img_gt.shape[0], img_gt.shape[1]))
+
+SET img_gt4[img_gt EQUALS level4] TO 1
+
+SET img_gt_mask TO img_gt1 + img_gt2 + img_gt3 + img_gt4
+
+
+SET img_cp_mask TO np.zeros((img_cp.shape[0], img_cp.shape[1]))
+
+SET img_cp_mask[img_cp > 0] TO 1
+
+SET area_cp TO sum(sum(img_cp_mask))
+
+SET combine TO img_cp_mask + img_gt_mask
+
+SET combine[combine EQUALS 1] TO 0
+
+SET combine[combine EQUALS 2] TO 1
+
+SET TP TO sum(sum(combine))
+
+SET FP TO area_cp - TP
+
+SET FN TO sum(sum(img_gt_mask)) - TP
+
+
+
+SET DC_mask_cp TO 2 * TP / (2 * TP + FP + FN)
+
+SET Pre_mask_cp TO TP / (TP + FP)
+
+SET Re_mask_cp TO TP / (TP + FN)
+
+SET F_mask_cp TO 2*Pre_mask_cp*Re_mask_cp / (Pre_mask_cp + Re_mask_cp)
+
+OUTPUT(DC_mask_cp, Pre_mask_cp, Re_mask_cp, F_mask_cp)
+
+
+######Object part
+
+SET TP_cp_obj TO 0
+
+SET FP_cp_obj TO 0
+
+SET area_cp_total TO 0
+
+SET overlapping_cp_mask TO 0
+
+SET cp_match_mask TO 0
+
+SET fn1_cp_obj TO 0
+
+SET img_gt1 TO np.array(img_gt1, dtype=np.uint8)
+
+SET retval1, labels1, stats1, centroids1 TO cv2.connectedComponentsWithStats(img_gt1)
+
+SET num_gt1, _ TO np.shape(stats1)
+
+num_gt1 -= 1
+
+SET cell_each TO []
+
+SET cell_each_F TO []
+
+SET cell_each_P TO []
+
+SET cell_each_R TO []
+
+
+FOR i IN range(num_gt1):
+
+    SET img_blank TO np.zeros((img_gt1.shape[0], img_gt1.shape[1]))
+
+    SET img_blank[labels1 EQUALS i+1] TO 1
+
+    SET GT_area1 TO sum(sum(img_blank))
+
+    SET overlapping1 TO np.multiply(img_cp, img_blank)
+
+    IF sum(sum(overlapping1)) EQUALS 0:
+
+        fn1_cp_obj += sum(sum(img_blank))
+
+        cell_each.append(0)
+
+    SET overlapping_cp_obj TO overlapping1.flatten()
+
+    SET overlapping_cp_obj TO overlapping_cp_obj[overlapping_cp_obj != 0]
+
+    SET overlapping_cp_obj TO overlapping_cp_obj.astype(int)
+
+    SET counts_cp_obj TO np.bincount(overlapping_cp_obj)
+
+    IF counts_cp_obj.size > 0:
+
+        SET mf_value_cp_obj TO np.argmax(counts_cp_obj)
+
+        SET img_blank TO np.zeros((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_blank[overlapping1 EQUALS mf_value_cp_obj] TO 1
+
+        TP_cp_obj += sum(sum(img_blank))
+
+        overlapping_cp_mask += img_blank
+
+        SET img_ones TO np.ones((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_ones2 TO np.ones((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_ones[img_blank > 0] TO 0
+
+        SET difference_cp_1 TO (sum(sum(np.multiply(img_ones2, img_cp))) - sum(sum(np.multiply(img_ones, img_cp)))) / sum(sum(img_blank))
+
+        SET img_blank_cp TO np.zeros((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_blank_cp[img_cp EQUALS difference_cp_1] TO 1
+
+        cp_match_mask += img_blank_cp
+
+        FP_cp_obj += (sum(sum(img_blank_cp)) - sum(sum(img_blank)))
+
+        SET TP_cell1 TO sum(sum(img_blank))
+
+        SET FP_cell1 TO sum(sum(img_blank_cp)) - sum(sum(img_blank))
+
+        SET FN_cell1 TO GT_area1 - sum(sum(img_blank))
+
+        SET Pre_cell1 TO TP_cell1 / (TP_cell1 + FP_cell1)
+
+        SET Re_cell1 TO TP_cell1 / (TP_cell1 + FN_cell1)
+
+        SET F_cell1 TO 2*Pre_cell1*Re_cell1 / (Pre_cell1 + Re_cell1)
+
+        cell_each_P.append(Pre_cell1)
+
+        cell_each_R.append(Re_cell1)
+
+        cell_each_F.append(F_cell1)
+
+
+
+SET fn2_cp_obj TO 0
+
+SET img_gt2 TO np.array(img_gt2, dtype=np.uint8)
+
+SET retval2, labels2, stats2, centroids2 TO cv2.connectedComponentsWithStats(img_gt2)
+
+SET num_gt2, _ TO np.shape(stats2)
+
+num_gt2 -= 1
+
+FOR i IN range(num_gt2):
+
+    SET img_blank TO np.zeros((img_gt2.shape[0], img_gt2.shape[1]))
+
+    SET img_blank[labels2 EQUALS i+1] TO 1
+
+    SET GT_area2 TO sum(sum(img_blank))
+
+    SET overlapping2 TO np.multiply(img_cp, img_blank)
+
+    IF sum(sum(overlapping2)) EQUALS 0:
+
+        fn2_cp_obj += sum(sum(img_blank))
+
+        cell_each.append(0)
+
+    SET overlapping_cp_obj TO overlapping2.flatten()
+
+    SET overlapping_cp_obj TO overlapping_cp_obj[overlapping_cp_obj != 0]
+
+    SET overlapping_cp_obj TO overlapping_cp_obj.astype(int)
+
+    SET counts_cp_obj TO np.bincount(overlapping_cp_obj)
+
+    IF counts_cp_obj.size > 0:
+
+        SET mf_value_cp_obj TO np.argmax(counts_cp_obj)
+
+        SET img_blank TO np.zeros((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_blank[overlapping2 EQUALS mf_value_cp_obj] TO 1
+
+        TP_cp_obj += sum(sum(img_blank))
+
+        overlapping_cp_mask += img_blank
+
+        SET img_ones TO np.ones((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_ones2 TO np.ones((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_ones[img_blank > 0] TO 0
+
+        SET difference_cp_2 TO (sum(sum(np.multiply(img_ones2, img_cp))) - sum(sum(np.multiply(img_ones, img_cp)))) / sum(sum(img_blank))
+
+        SET img_blank_cp TO np.zeros((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_blank_cp[img_cp EQUALS difference_cp_2] TO 1
+
+        cp_match_mask += img_blank_cp
+
+        FP_cp_obj += sum(sum(img_blank_cp)) - sum(sum(img_blank))
+
+        SET TP_cell2 TO sum(sum(img_blank))
+
+        SET FP_cell2 TO sum(sum(img_blank_cp)) - sum(sum(img_blank))
+
+        SET FN_cell2 TO GT_area2 - sum(sum(img_blank))
+
+        SET Pre_cell2 TO TP_cell2 / (TP_cell2 + FP_cell2)
+
+        SET Re_cell2 TO TP_cell2 / (TP_cell2 + FN_cell2)
+
+        SET F_cell2 TO 2 * Pre_cell2 * Re_cell2 / (Pre_cell2 + Re_cell2)
+
+        cell_each_P.append(Pre_cell2)
+
+        cell_each_R.append(Re_cell2)
+
+        cell_each_F.append(F_cell2)
+
+
+
+SET fn3_cp_obj TO 0
+
+SET fn3_our_obj TO 0
+
+SET img_gt3 TO np.array(img_gt3, dtype=np.uint8)
+
+SET retval3, labels3, stats3, centroids3 TO cv2.connectedComponentsWithStats(img_gt3)
+
+SET num_gt3, _ TO np.shape(stats3)
+
+num_gt3 -= 1
+
+FOR i IN range(num_gt3):
+
+    SET img_blank TO np.zeros((img_gt3.shape[0], img_gt3.shape[1]))
+
+    SET img_blank[labels3 EQUALS i+1] TO 1
+
+    SET GT_area3 TO sum(sum(img_blank))
+
+    SET overlapping3 TO np.multiply(img_cp, img_blank)
+
+    IF sum(sum(overlapping3)) EQUALS 0:
+
+        cell_each.append(0)
+
+        fn3_cp_obj += sum(sum(img_blank))
+
+    SET overlapping_cp_obj TO overlapping3.flatten()
+
+    SET overlapping_cp_obj TO overlapping_cp_obj[overlapping_cp_obj != 0]
+
+    SET overlapping_cp_obj TO overlapping_cp_obj.astype(int)
+
+    SET counts_cp_obj TO np.bincount(overlapping_cp_obj)
+
+    IF counts_cp_obj.size > 0:
+
+        SET mf_value_cp_obj TO np.argmax(counts_cp_obj)
+
+        SET img_blank TO np.zeros((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_blank[overlapping3 EQUALS mf_value_cp_obj] TO 1
+
+        TP_cp_obj += sum(sum(img_blank))
+
+        overlapping_cp_mask += img_blank
+
+        SET img_ones TO np.ones((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_ones2 TO np.ones((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_ones[img_blank > 0] TO 0
+
+        SET difference_cp_3 TO (sum(sum(np.multiply(img_ones2, img_cp))) - sum(sum(np.multiply(img_ones, img_cp)))) / sum(sum(img_blank))
+
+        SET img_blank_cp TO np.zeros((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_blank_cp[img_cp EQUALS difference_cp_3] TO 1
+
+        cp_match_mask += img_blank_cp
+
+        FP_cp_obj += (sum(sum(img_blank_cp)) - sum(sum(img_blank)))
+
+        SET TP_cell3 TO sum(sum(img_blank))
+
+        SET FP_cell3 TO sum(sum(img_blank_cp)) - sum(sum(img_blank))
+
+        SET FN_cell3 TO GT_area3 - sum(sum(img_blank))
+
+        SET Pre_cell3 TO TP_cell3 / (TP_cell3 + FP_cell3)
+
+        SET Re_cell3 TO TP_cell3 / (TP_cell3 + FN_cell3)
+
+        SET F_cell3 TO 2 * Pre_cell3 * Re_cell3 / (Pre_cell3 + Re_cell3)
+
+        cell_each_P.append(Pre_cell3)
+
+        cell_each_R.append(Re_cell3)
+
+        cell_each_F.append(F_cell3)
+
+
+SET fn4_cp_obj TO 0
+
+SET fn4_our_obj TO 0
+
+SET img_gt4 TO np.array(img_gt4, dtype=np.uint8)
+
+SET retval4, labels4, stats4, centroids4 TO cv2.connectedComponentsWithStats(img_gt4)
+
+SET num_gt4, _ TO np.shape(stats4)
+
+num_gt4 -= 1
+
+FOR i IN range(num_gt4):
+
+    SET img_blank TO np.zeros((img_gt4.shape[0], img_gt4.shape[1]))
+
+    SET img_blank[labels4 EQUALS i+1] TO 1
+
+    SET GT_area4 TO sum(sum(img_blank))
+
+    SET overlapping4 TO np.multiply(img_cp, img_blank)
+
+    IF sum(sum(overlapping4)) EQUALS 0:
+
+        cell_each.append(0)
+
+        fn4_cp_obj += sum(sum(img_blank))
+
+    SET overlapping_cp_obj TO overlapping4.flatten()
+
+    SET overlapping_cp_obj TO overlapping_cp_obj[overlapping_cp_obj != 0]
+
+    SET overlapping_cp_obj TO overlapping_cp_obj.astype(int)
+
+    SET counts_cp_obj TO np.bincount(overlapping_cp_obj)
+
+    IF counts_cp_obj.size > 0:
+
+        SET mf_value_cp_obj TO np.argmax(counts_cp_obj)
+
+        SET img_blank TO np.zeros((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_blank[overlapping4 EQUALS mf_value_cp_obj] TO 1
+
+        TP_cp_obj += sum(sum(img_blank))
+
+        overlapping_cp_mask += img_blank
+
+        SET img_ones TO np.ones((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_ones2 TO np.ones((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_ones[img_blank > 0] TO 0
+
+        SET difference_cp_4 TO (sum(sum(np.multiply(img_ones2, img_cp))) - sum(sum(np.multiply(img_ones, img_cp)))) / sum(sum(img_blank))
+
+        SET img_blank_cp TO np.zeros((img_cp.shape[0], img_cp.shape[1]))
+
+        SET img_blank_cp[img_cp EQUALS difference_cp_4] TO 1
+
+        cp_match_mask += img_blank_cp
+
+        FP_cp_obj += (sum(sum(img_blank_cp)) - sum(sum(img_blank)))
+
+        SET TP_cell4 TO sum(sum(img_blank))
+
+        SET FP_cell4 TO sum(sum(img_blank_cp)) - sum(sum(img_blank))
+
+        SET FN_cell4 TO GT_area4 - sum(sum(img_blank))
+
+        SET Pre_cell4 TO TP_cell4 / (TP_cell4 + FP_cell4)
+
+        SET Re_cell4 TO TP_cell4 / (TP_cell4 + FN_cell4)
+
+        SET F_cell4 TO 2 * Pre_cell4 * Re_cell4 / (Pre_cell4 + Re_cell4)
+
+        cell_each_P.append(Pre_cell4)
+
+        cell_each_R.append(Re_cell4)
+
+        cell_each_F.append(F_cell4)
+
+
+SET img_blank TO np.zeros((img_cp.shape[0], img_cp.shape[1]))
+
+SET img_blank[img_cp > 0] TO 1
+
+SET img_cp_mask TO img_blank
+
+SET cp_match_mask[cp_match_mask > 0] TO 1
+
+SET FP_cp_obj TO FP_cp_obj + sum(sum(img_cp_mask)) - sum(sum(cp_match_mask))
+
+SET FN_cp_obj TO sum(sum(img_gt_mask)) - TP_cp_obj
+
+SET DC_cp_obj TO (2 * TP_cp_obj) / (2 * TP_cp_obj + FN_cp_obj + FP_cp_obj)
+
+SET Pre_cp_obj TO TP_cp_obj / (TP_cp_obj + FP_cp_obj)
+
+SET Re_cp_obj TO TP_cp_obj / (TP_cp_obj + FN_cp_obj)
+
+SET F_cp_obj TO 2*Pre_cp_obj*Re_cp_obj / (Pre_cp_obj + Re_cp_obj)
+
+OUTPUT(DC_cp_obj, Pre_cp_obj, Re_cp_obj, F_cp_obj)
+
+
+cell_each_F.extend(cell_each)
+
+cell_each_R.extend(cell_each)
+
+cell_each_P.extend(cell_each)
+
+
+SET cell_each_F TO np.array(cell_each_F)
+
+SET cell_each_R TO np.array(cell_each_R)
+
+SET cell_each_P TO np.array(cell_each_P)
+
+
+SET cell_each_F TO pd.DataFrame([[i] FOR i IN np.array(cell_each_F)])
+
+SET cell_each_R TO pd.DataFrame([[i] FOR i IN np.array(cell_each_R)])
+
+SET cell_each_P TO pd.DataFrame([[i] FOR i IN np.array(cell_each_P)])
+
+
+SET data TO np.column_stack([cell_each_F, cell_each_R, cell_each_P])
+
+SET data TO pd.DataFrame(data= data, columns=['F-measure', 'Recall', 'Precision'])
+data.to_excel("output.xlsx")
+
+
+OUTPUT(time.process_time() - start)
+
+
+
+
+
+
