@@ -1,0 +1,4 @@
+This is a public dataset from Kaggle: https://www.kaggle.com/datasets/saratrajput/vehicle-rear-side-view-synthetic-data-set.
+As it is a dataset with more than 20000 images, we selected 5 random ones for our evaluation.
+We considered the instance segmentation images as the segmentation results and class segmentation images as the ground truth.
+The images we used are in this folder.
